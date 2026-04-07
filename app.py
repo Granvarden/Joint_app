@@ -1,8 +1,9 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.dates as mdates
+from matplotlib.lines import Line2D # นำเข้า Line2D เพื่อสร้าง Legend แบบกำหนดเอง
 from datetime import datetime, date, timedelta
 from tkcalendar import Calendar
 
@@ -19,7 +20,7 @@ class DashboardApp:
         style = ttk.Style()
         style.theme_use('clam') 
         style.configure('TLabel', font=('Arial', 16))
-        style.configure('TButton', font=('Arial', 18), padding=10) # ขยายปุ่มให้ใหญ่ขึ้น
+        style.configure('TButton', font=('Arial', 18), padding=10)
         style.configure('TNotebook.Tab', font=('Arial', 16), padding=[15, 5])
         
         self.tab_data = {i: {'x': [], 'y': [], 'limit': None} for i in range(6)}
@@ -48,37 +49,36 @@ class DashboardApp:
         
         ttk.Label(self.form_frame, text="-- Management --", font=('Arial', 18, 'bold')).pack(anchor=tk.N, pady=(0, 10))
         
-        self.cal_btn = ttk.Button(self.form_frame, text="📅 Open Calendar", command=self.open_calendar)
+        self.cal_btn = ttk.Button(self.form_frame, text="📅 Calendar", command=self.open_calendar)
         self.cal_btn.pack(fill=tk.X, padx=5, pady=(0, 5))
         
-        # ใช้ tk.Entry เพื่อให้ควบคุมขนาดฟอนต์และช่องให้ใหญ่ได้ง่ายขึ้น
         self.x_input = tk.Entry(self.form_frame, textvariable=self.current_date_var, state="readonly", justify='center', font=('Arial', 18))
         self.x_input.pack(fill=tk.X, padx=5, pady=(0, 15), ipady=5)
         
-        ttk.Label(self.form_frame, text="Measurement:").pack(anchor=tk.W, padx=5)
+        ttk.Label(self.form_frame, text="Measurement (Y):").pack(anchor=tk.W, padx=5)
         self.y_input = tk.Entry(self.form_frame, font=('Arial', 18), justify='center')
         self.y_input.pack(fill=tk.X, padx=5, pady=(0, 15), ipady=5)
         
-        self.add_btn = ttk.Button(self.form_frame, text="Add measurement points", command=self.add_point)
+        self.add_btn = ttk.Button(self.form_frame, text="Add Point", command=self.add_point)
         self.add_btn.pack(fill=tk.X, padx=5, pady=5)
         
-        self.del_btn = ttk.Button(self.form_frame, text="Delete today's measurement points.", command=self.delete_point)
+        self.del_btn = ttk.Button(self.form_frame, text="Delete Point", command=self.delete_point)
         self.del_btn.pack(fill=tk.X, padx=5, pady=5)
         
         ttk.Separator(self.form_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=5, pady=20)
         
         ttk.Label(self.form_frame, text="-- Limit Line --", font=('Arial', 18, 'bold')).pack(anchor=tk.N, pady=(0, 10))
         
-        ttk.Label(self.form_frame, text="Limit value (Y):").pack(anchor=tk.W, padx=5)
+        ttk.Label(self.form_frame, text="Limit value:").pack(anchor=tk.W, padx=5)
         self.limit_input = tk.Entry(self.form_frame, font=('Arial', 18), justify='center')
         self.limit_input.pack(fill=tk.X, padx=5, pady=(0, 10), ipady=5)
         
-        self.limit_btn = ttk.Button(self.form_frame, text="Set limit", command=self.set_limit)
+        self.limit_btn = ttk.Button(self.form_frame, text="Set Limit", command=self.set_limit)
         self.limit_btn.pack(fill=tk.X, padx=5, pady=5)
 
         ttk.Separator(self.form_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=5, pady=20)
 
-        self.clear_btn = ttk.Button(self.form_frame, text="Clear graph on this page", command=self.clear_graph)
+        self.clear_btn = ttk.Button(self.form_frame, text="Clear Graph", command=self.clear_graph)
         self.clear_btn.pack(fill=tk.X, padx=5, pady=5)
 
         # --- สร้างกราฟ 6 แท็บ ---
@@ -91,7 +91,8 @@ class DashboardApp:
             self.notebook.add(tab, text=f"JT.{i+1}")
             
             fig = Figure(figsize=(8, 6), dpi=100)
-            fig.subplots_adjust(bottom=0.2, left=0.1) 
+            # ปรับ top=0.82 เพื่อเผื่อพื้นที่ด้านบนให้เพียงพอสำหรับกล่อง Legend ที่ย้ายขึ้นไป
+            fig.subplots_adjust(bottom=0.2, left=0.1, right=0.95, top=0.82) 
             ax = fig.add_subplot(111)
             
             canvas = FigureCanvasTkAgg(fig, master=tab)
@@ -106,29 +107,179 @@ class DashboardApp:
             
             self.update_graph(i)
 
+    # ==========================================
+    # ระบบจัดกึ่งกลางและแก้หน้าต่างกะพริบ
+    # ==========================================
+    def center_window(self, win):
+        win.update_idletasks()
+        
+        width = win.winfo_reqwidth() + 20 
+        height = win.winfo_reqheight() + 20
+        
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (width // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (height // 2)
+        
+        win.geometry(f"{width}x{height}+{x}+{y}")
+        win.deiconify() 
+        win.attributes('-alpha', 1.0) 
+
+    # --- หน้าต่างแจ้งเตือน ---
+    def show_message(self, title, message):
+        dlg = tk.Toplevel(self.root)
+        dlg.attributes('-alpha', 0.0) 
+        dlg.title(title)
+        
+        bg_color = dlg.cget('bg') 
+        
+        main_frame = tk.Frame(dlg, bg=bg_color)
+        main_frame.pack(expand=True, fill=tk.BOTH, padx=30, pady=30)
+        
+        tk.Label(main_frame, text=message, font=('Arial', 16), bg=bg_color, justify='center', wraplength=400).pack(pady=(0, 20))
+        
+        ttk.Button(main_frame, text="OK", command=dlg.destroy).pack()
+        
+        self.center_window(dlg)
+        dlg.transient(self.root)
+        dlg.grab_set()
+        self.root.wait_window(dlg)
+
+    # --- หน้าต่างถาม Yes / No ทั่วไป ---
+    def ask_yes_no(self, title, message):
+        dlg = tk.Toplevel(self.root)
+        dlg.attributes('-alpha', 0.0) 
+        dlg.title(title)
+        
+        bg_color = dlg.cget('bg')
+        result = tk.BooleanVar(value=False)
+        
+        main_frame = tk.Frame(dlg, bg=bg_color)
+        main_frame.pack(expand=True, fill=tk.BOTH, padx=30, pady=30)
+        
+        tk.Label(main_frame, text=message, font=('Arial', 16), bg=bg_color, justify='center', wraplength=400).pack(pady=(0, 20))
+        
+        btn_frame = tk.Frame(main_frame, bg=bg_color)
+        btn_frame.pack()
+        
+        def on_yes():
+            result.set(True)
+            dlg.destroy()
+            
+        def on_no():
+            result.set(False)
+            dlg.destroy()
+            
+        ttk.Button(btn_frame, text="Yes", command=on_yes).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text="No", command=on_no).pack(side=tk.LEFT, padx=10)
+        
+        self.center_window(dlg)
+        dlg.transient(self.root)
+        dlg.grab_set()
+        self.root.wait_window(dlg)
+        return result.get()
+
+    # --- หน้าต่างยืนยันการเคลียร์กราฟ (ไฮไลท์คำว่า JT) ---
+    def ask_clear_confirm(self, tab_index):
+        dlg = tk.Toplevel(self.root)
+        dlg.attributes('-alpha', 0.0) 
+        dlg.title("Confirm Clear Graph")
+        
+        bg_color = dlg.cget('bg')
+        result = tk.BooleanVar(value=False)
+        
+        main_frame = tk.Frame(dlg, bg=bg_color)
+        main_frame.pack(expand=True, fill=tk.BOTH, padx=30, pady=30)
+        
+        txt_frame = tk.Frame(main_frame, bg=bg_color)
+        txt_frame.pack(pady=(0, 20))
+        
+        tk.Label(txt_frame, text="Are you sure you want to clear all data on ", font=('Arial', 16), bg=bg_color).pack(side=tk.LEFT)
+        tk.Label(txt_frame, text=f"JT.{tab_index + 1}", font=('Arial', 16, 'bold'), fg='red', bg=bg_color).pack(side=tk.LEFT)
+        tk.Label(txt_frame, text="?", font=('Arial', 16), bg=bg_color).pack(side=tk.LEFT)
+        
+        btn_frame = tk.Frame(main_frame, bg=bg_color)
+        btn_frame.pack()
+        
+        def on_yes():
+            result.set(True)
+            dlg.destroy()
+            
+        def on_no():
+            result.set(False)
+            dlg.destroy()
+            
+        ttk.Button(btn_frame, text="Yes", command=on_yes).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text="No", command=on_no).pack(side=tk.LEFT, padx=10)
+        
+        self.center_window(dlg)
+        dlg.transient(self.root)
+        dlg.grab_set()
+        self.root.wait_window(dlg)
+        return result.get()
+
+    # --- หน้าต่างกรอกค่าอัปเดตกราฟ ---
+    def ask_float(self, title, message, initialvalue=0.0):
+        dlg = tk.Toplevel(self.root)
+        dlg.attributes('-alpha', 0.0) 
+        dlg.title(title)
+        
+        bg_color = dlg.cget('bg')
+        result = tk.DoubleVar(value=initialvalue)
+        is_ok = tk.BooleanVar(value=False)
+        
+        main_frame = tk.Frame(dlg, bg=bg_color)
+        main_frame.pack(expand=True, fill=tk.BOTH, padx=30, pady=30)
+        
+        tk.Label(main_frame, text=message, font=('Arial', 16), bg=bg_color, justify='center', wraplength=400).pack(pady=(0, 15))
+        
+        entry = tk.Entry(main_frame, font=('Arial', 18), justify='center', width=15)
+        entry.insert(0, str(initialvalue))
+        entry.pack(pady=(0, 20))
+        entry.focus_set()
+        
+        def on_ok(event=None):
+            try:
+                val = float(entry.get())
+                result.set(val)
+                is_ok.set(True)
+                dlg.destroy()
+            except ValueError:
+                self.show_message("Error", "Please enter a valid number.")
+                entry.focus_set()
+                
+        def on_cancel():
+            dlg.destroy()
+            
+        dlg.bind('<Return>', on_ok)
+            
+        btn_frame = tk.Frame(main_frame, bg=bg_color)
+        btn_frame.pack()
+        ttk.Button(btn_frame, text="Confirm", command=on_ok).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=10)
+        
+        self.center_window(dlg)
+        dlg.transient(self.root)
+        dlg.grab_set()
+        self.root.wait_window(dlg)
+        return result.get() if is_ok.get() else None
+
+    # ==========================================
+
     def get_selected_date(self):
         date_str = self.current_date_var.get()
         return datetime.strptime(date_str, '%Y-%m-%d').date()
 
     def open_calendar(self):
         top = tk.Toplevel(self.root)
+        top.attributes('-alpha', 0.0)
         top.title("Select Date")
         
-        window_width, window_height = 400, 350
-        screen_width = top.winfo_screenwidth()
-        screen_height = top.winfo_screenheight()
-        x_cordinate = int((screen_width/2) - (window_width/2))
-        y_cordinate = int((screen_height/2) - (window_height/2))
-        top.geometry(f"{window_width}x{window_height}+{x_cordinate}+{y_cordinate}")
+        bg_color = top.cget('bg')
+        top.configure(bg=bg_color)
         
-        top.transient(self.root)
-        top.grab_set()
-
-        # ปิดการแสดงเลขสัปดาห์ด้วย showweeknumbers=False
-        cal = Calendar(top, font="Arial 14", selectmode='day', 
+        cal = Calendar(top, font="Arial 16", selectmode='day', 
                        date_pattern='yyyy-mm-dd', firstweekday='sunday',
                        showweeknumbers=False)
-        cal.pack(expand=True, fill=tk.BOTH, padx=20, pady=20)
+        cal.pack(padx=20, pady=(20, 10))
         
         def confirm_date():
             self.current_date_var.set(cal.get_date())
@@ -136,6 +287,10 @@ class DashboardApp:
             top.destroy()
             
         ttk.Button(top, text="Confirm", command=confirm_date).pack(pady=(0, 20))
+        
+        self.center_window(top)
+        top.transient(self.root)
+        top.grab_set()
 
     def check_existing_data(self, event=None):
         try:
@@ -143,7 +298,6 @@ class DashboardApp:
         except:
             return 
             
-        # ล้างและอัปเดตฟอร์มแกน Y ให้ตรงกับวันที่
         x_val = self.get_selected_date()
         tab_x = self.tab_data[current_tab]['x']
         tab_y = self.tab_data[current_tab]['y']
@@ -153,7 +307,6 @@ class DashboardApp:
             idx = tab_x.index(x_val)
             self.y_input.insert(0, str(tab_y[idx]))
 
-        # ล้างและอัปเดตฟอร์มเส้น Limit ให้ตรงกับแท็บปัจจุบัน
         self.limit_input.delete(0, tk.END)
         current_limit = self.tab_data[current_tab]['limit']
         if current_limit is not None:
@@ -169,14 +322,13 @@ class DashboardApp:
         y_old = self.tab_data[current_tab]['y'][ind]
         
         date_str = x_date.strftime('%d/%m/%Y')
-        confirm = messagebox.askyesno("Confirm", 
-                                      f"Do you want to modify the date value of {date_str}\n(the current value is: {y_old})?")
+        confirm = self.ask_yes_no("Confirm", 
+                                  f"Do you want to modify the data for {date_str}?\n(Current value: {y_old})")
         
         if confirm:
-            new_y = simpledialog.askfloat("Edit value.", 
-                                          f"Fill new value for the date. {date_str}:", 
-                                          initialvalue=y_old, 
-                                          parent=self.root)
+            new_y = self.ask_float("Edit Value", 
+                                   f"Enter new value for {date_str}:", 
+                                   initialvalue=y_old)
             if new_y is not None:
                 self.tab_data[current_tab]['y'][ind] = new_y
                 self.update_graph(current_tab)
@@ -188,7 +340,7 @@ class DashboardApp:
         try:
             y_val = float(y_str)
         except ValueError:
-            messagebox.showerror("Data incorrect.", "value must be number.")
+            self.show_message("Error", "Value must be a number.")
             return
             
         current_tab = self.notebook.index(self.notebook.select())
@@ -196,7 +348,7 @@ class DashboardApp:
         tab_y = self.tab_data[current_tab]['y']
         
         if x_val in tab_x:
-            messagebox.showwarning("Duplicate", "Data is available today. To edit, please click on a point on the graph.")
+            self.show_message("Alert", "Data is already available for today. To edit, click on the point on the graph.")
             return
         
         tab_x.append(x_val)
@@ -222,9 +374,9 @@ class DashboardApp:
             tab_y.pop(idx)
             self.update_graph(current_tab)
             self.y_input.delete(0, tk.END)
-            messagebox.showinfo("Successful", "Data has been successfully deleted.")
+            self.show_message("Success", "Data has been successfully deleted.")
         else:
-            messagebox.showinfo("Alert", "No data available for the selected date.")
+            self.show_message("Notice", "No data available for the selected date.")
 
     def set_limit(self):
         limit_str = self.limit_input.get().strip()
@@ -237,13 +389,18 @@ class DashboardApp:
                 limit_val = float(limit_str)
                 self.tab_data[current_tab]['limit'] = limit_val
             except ValueError:
-                messagebox.showerror("Data incorrect.", "Limit value must be number.")
+                self.show_message("Error", "Limit value must be a number.")
                 return
                 
         self.update_graph(current_tab)
 
     def clear_graph(self):
         current_tab = self.notebook.index(self.notebook.select())
+        
+        confirm = self.ask_clear_confirm(current_tab)
+        if not confirm:
+            return
+            
         self.tab_data[current_tab]['x'] = []
         self.tab_data[current_tab]['y'] = []
         self.tab_data[current_tab]['limit'] = None
@@ -258,9 +415,6 @@ class DashboardApp:
         x_data = self.tab_data[tab_index]['x']
         y_data = self.tab_data[tab_index]['y']
         limit_val = self.tab_data[tab_index]['limit']
-        
-        # ถอดการกำหนดสเกลออก เพื่อให้แกน Y ยืดหยุ่นตามข้อมูลอัตโนมัติ
-        # ax.set_ylim(5, 25) 
         
         if tab_index < 4:
             ax.set_ylabel("Voltage (V)", fontsize=20)
@@ -281,12 +435,27 @@ class DashboardApp:
                             textcoords="offset points", xytext=(0, 10), ha='center', 
                             fontsize=14, fontweight='bold', color='black')
         
+        # วาดเส้น Limit
         if limit_val is not None:
-            ax.axhline(y=limit_val, color='red', linestyle='--', linewidth=2, label=f"Limit line = {limit_val})")
-            if x_data: 
-                ax.legend(fontsize=14)
+            ax.axhline(y=limit_val, color='red', linestyle='--', linewidth=2)
+            limit_label = f"Limit line = {limit_val}"
+        else:
+            limit_label = "Limit line"
             
-        ax.set_title(f"Record on page {tab_index+1}", fontsize=20)
+        # --- จัดวาง Title และ Legend โฉมใหม่ ---
+        
+        # 1. จัดตำแหน่ง Title "Record on JT.x" ไปอยู่ชิดซ้าย
+        ax.set_title(f"Record on JT.{tab_index+1}", fontsize=20, loc='left', pad=15)
+        
+        # 2. สร้าง Custom Handles ให้ Legend แสดงเสมอ ไม่ว่าจะมีข้อมูลหรือไม่
+        custom_lines = [
+            Line2D([0], [0], color='blue', marker='o', markersize=8, linestyle='-', linewidth=2, label="Measurement data"),
+            Line2D([0], [0], color='red', linestyle='--', linewidth=2, label=limit_label)
+        ]
+        
+        # 3. จัดตำแหน่ง Legend ไปอยู่ชิดขวาสุด (ระดับความสูงเดียวกับ Title ด้านบนแกนกราฟ)
+        ax.legend(handles=custom_lines, fontsize=14, loc='lower right', bbox_to_anchor=(1.0, 1.02), framealpha=1.0)
+            
         ax.grid(True, linestyle='--', alpha=0.7)
         ax.tick_params(axis='both', labelsize=14)
         
