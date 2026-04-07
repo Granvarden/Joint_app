@@ -1,9 +1,10 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog
+import csv
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.dates as mdates
-from matplotlib.lines import Line2D # นำเข้า Line2D เพื่อสร้าง Legend แบบกำหนดเอง
+from matplotlib.lines import Line2D
 from datetime import datetime, date, timedelta
 from tkcalendar import Calendar
 
@@ -20,11 +21,13 @@ class DashboardApp:
         style = ttk.Style()
         style.theme_use('clam') 
         style.configure('TLabel', font=('Arial', 16))
-        style.configure('TButton', font=('Arial', 18), padding=10)
+        style.configure('TButton', font=('Arial', 16), padding=8)
         style.configure('TNotebook.Tab', font=('Arial', 16), padding=[15, 5])
         
         self.tab_data = {i: {'x': [], 'y': [], 'limit': None} for i in range(6)}
-        self.current_date_var = tk.StringVar(value=date.today().strftime('%Y-%m-%d'))
+        
+        # เปลี่ยนรูปแบบวันที่ตั้งต้นเป็น วัน/เดือน/ปี (DD/MM/YYYY)
+        self.current_date_var = tk.StringVar(value=date.today().strftime('%d/%m/%Y'))
         
         # --- สร้าง Frame หลัก ---
         self.main_frame = ttk.Frame(self.root)
@@ -44,42 +47,48 @@ class DashboardApp:
         self.notebook.bind("<<NotebookTabChanged>>", self.check_existing_data)
         
         # --- ส่วนฟอร์มรับข้อมูล (ด้านขวา เรียงแนวตั้ง) ---
-        self.form_frame = ttk.Frame(self.content_frame, width=300)
-        self.form_frame.pack(side=tk.RIGHT, fill=tk.Y, pady=10)
+        self.form_frame = ttk.Frame(self.content_frame, width=350)
+        self.form_frame.pack(side=tk.RIGHT, fill=tk.Y, pady=5)
         
-        ttk.Label(self.form_frame, text="-- Management --", font=('Arial', 18, 'bold')).pack(anchor=tk.N, pady=(0, 10))
+        ttk.Label(self.form_frame, text="-- Management --", font=('Arial', 18, 'bold')).pack(anchor=tk.N, pady=(0, 5))
         
         self.cal_btn = ttk.Button(self.form_frame, text="📅 Calendar", command=self.open_calendar)
         self.cal_btn.pack(fill=tk.X, padx=5, pady=(0, 5))
         
         self.x_input = tk.Entry(self.form_frame, textvariable=self.current_date_var, state="readonly", justify='center', font=('Arial', 18))
-        self.x_input.pack(fill=tk.X, padx=5, pady=(0, 15), ipady=5)
+        self.x_input.pack(fill=tk.X, padx=5, pady=(0, 10), ipady=3)
         
         ttk.Label(self.form_frame, text="Measurement (Y):").pack(anchor=tk.W, padx=5)
         self.y_input = tk.Entry(self.form_frame, font=('Arial', 18), justify='center')
-        self.y_input.pack(fill=tk.X, padx=5, pady=(0, 15), ipady=5)
+        self.y_input.pack(fill=tk.X, padx=5, pady=(0, 10), ipady=3)
         
-        self.add_btn = ttk.Button(self.form_frame, text="Add Point", command=self.add_point)
-        self.add_btn.pack(fill=tk.X, padx=5, pady=5)
+        btn_frame1 = ttk.Frame(self.form_frame)
+        btn_frame1.pack(fill=tk.X, padx=5, pady=5)
+        self.add_btn = ttk.Button(btn_frame1, text="Add", command=self.add_point)
+        self.add_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 2))
+        self.del_btn = ttk.Button(btn_frame1, text="Delete", command=self.delete_point)
+        self.del_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(2, 0))
         
-        self.del_btn = ttk.Button(self.form_frame, text="Delete Point", command=self.delete_point)
-        self.del_btn.pack(fill=tk.X, padx=5, pady=5)
+        ttk.Separator(self.form_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=5, pady=10)
         
-        ttk.Separator(self.form_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=5, pady=20)
-        
-        ttk.Label(self.form_frame, text="-- Limit Line --", font=('Arial', 18, 'bold')).pack(anchor=tk.N, pady=(0, 10))
+        ttk.Label(self.form_frame, text="-- Limit Line --", font=('Arial', 18, 'bold')).pack(anchor=tk.N, pady=(0, 5))
         
         ttk.Label(self.form_frame, text="Limit value:").pack(anchor=tk.W, padx=5)
         self.limit_input = tk.Entry(self.form_frame, font=('Arial', 18), justify='center')
-        self.limit_input.pack(fill=tk.X, padx=5, pady=(0, 10), ipady=5)
+        self.limit_input.pack(fill=tk.X, padx=5, pady=(0, 10), ipady=3)
         
         self.limit_btn = ttk.Button(self.form_frame, text="Set Limit", command=self.set_limit)
         self.limit_btn.pack(fill=tk.X, padx=5, pady=5)
 
-        ttk.Separator(self.form_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=5, pady=20)
+        ttk.Separator(self.form_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=5, pady=10)
+
+        ttk.Label(self.form_frame, text="-- Actions --", font=('Arial', 18, 'bold')).pack(anchor=tk.N, pady=(0, 5))
+        
+        self.export_btn = ttk.Button(self.form_frame, text="Export CSV", command=self.export_csv)
+        self.export_btn.pack(fill=tk.X, padx=5, pady=5)
 
         self.clear_btn = ttk.Button(self.form_frame, text="Clear Graph", command=self.clear_graph)
-        self.clear_btn.pack(fill=tk.X, padx=5, pady=5)
+        self.clear_btn.pack(fill=tk.X, padx=5, pady=(50, 5))
 
         # --- สร้างกราฟ 6 แท็บ ---
         self.figures_list = []
@@ -91,7 +100,6 @@ class DashboardApp:
             self.notebook.add(tab, text=f"JT.{i+1}")
             
             fig = Figure(figsize=(8, 6), dpi=100)
-            # ปรับ top=0.82 เพื่อเผื่อพื้นที่ด้านบนให้เพียงพอสำหรับกล่อง Legend ที่ย้ายขึ้นไป
             fig.subplots_adjust(bottom=0.2, left=0.1, right=0.95, top=0.82) 
             ax = fig.add_subplot(111)
             
@@ -108,34 +116,28 @@ class DashboardApp:
             self.update_graph(i)
 
     # ==========================================
-    # ระบบจัดกึ่งกลางและแก้หน้าต่างกะพริบ
+    # ระบบจัดกึ่งกลางและหน้าต่างแจ้งเตือน
     # ==========================================
     def center_window(self, win):
         win.update_idletasks()
-        
         width = win.winfo_reqwidth() + 20 
         height = win.winfo_reqheight() + 20
-        
         x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (width // 2)
         y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (height // 2)
-        
         win.geometry(f"{width}x{height}+{x}+{y}")
         win.deiconify() 
         win.attributes('-alpha', 1.0) 
 
-    # --- หน้าต่างแจ้งเตือน ---
     def show_message(self, title, message):
         dlg = tk.Toplevel(self.root)
         dlg.attributes('-alpha', 0.0) 
         dlg.title(title)
-        
         bg_color = dlg.cget('bg') 
         
         main_frame = tk.Frame(dlg, bg=bg_color)
         main_frame.pack(expand=True, fill=tk.BOTH, padx=30, pady=30)
         
         tk.Label(main_frame, text=message, font=('Arial', 16), bg=bg_color, justify='center', wraplength=400).pack(pady=(0, 20))
-        
         ttk.Button(main_frame, text="OK", command=dlg.destroy).pack()
         
         self.center_window(dlg)
@@ -143,7 +145,6 @@ class DashboardApp:
         dlg.grab_set()
         self.root.wait_window(dlg)
 
-    # --- หน้าต่างถาม Yes / No ทั่วไป ---
     def ask_yes_no(self, title, message):
         dlg = tk.Toplevel(self.root)
         dlg.attributes('-alpha', 0.0) 
@@ -154,7 +155,6 @@ class DashboardApp:
         
         main_frame = tk.Frame(dlg, bg=bg_color)
         main_frame.pack(expand=True, fill=tk.BOTH, padx=30, pady=30)
-        
         tk.Label(main_frame, text=message, font=('Arial', 16), bg=bg_color, justify='center', wraplength=400).pack(pady=(0, 20))
         
         btn_frame = tk.Frame(main_frame, bg=bg_color)
@@ -163,7 +163,6 @@ class DashboardApp:
         def on_yes():
             result.set(True)
             dlg.destroy()
-            
         def on_no():
             result.set(False)
             dlg.destroy()
@@ -177,7 +176,6 @@ class DashboardApp:
         self.root.wait_window(dlg)
         return result.get()
 
-    # --- หน้าต่างยืนยันการเคลียร์กราฟ (ไฮไลท์คำว่า JT) ---
     def ask_clear_confirm(self, tab_index):
         dlg = tk.Toplevel(self.root)
         dlg.attributes('-alpha', 0.0) 
@@ -191,7 +189,6 @@ class DashboardApp:
         
         txt_frame = tk.Frame(main_frame, bg=bg_color)
         txt_frame.pack(pady=(0, 20))
-        
         tk.Label(txt_frame, text="Are you sure you want to clear all data on ", font=('Arial', 16), bg=bg_color).pack(side=tk.LEFT)
         tk.Label(txt_frame, text=f"JT.{tab_index + 1}", font=('Arial', 16, 'bold'), fg='red', bg=bg_color).pack(side=tk.LEFT)
         tk.Label(txt_frame, text="?", font=('Arial', 16), bg=bg_color).pack(side=tk.LEFT)
@@ -202,7 +199,6 @@ class DashboardApp:
         def on_yes():
             result.set(True)
             dlg.destroy()
-            
         def on_no():
             result.set(False)
             dlg.destroy()
@@ -216,7 +212,6 @@ class DashboardApp:
         self.root.wait_window(dlg)
         return result.get()
 
-    # --- หน้าต่างกรอกค่าอัปเดตกราฟ ---
     def ask_float(self, title, message, initialvalue=0.0):
         dlg = tk.Toplevel(self.root)
         dlg.attributes('-alpha', 0.0) 
@@ -228,7 +223,6 @@ class DashboardApp:
         
         main_frame = tk.Frame(dlg, bg=bg_color)
         main_frame.pack(expand=True, fill=tk.BOTH, padx=30, pady=30)
-        
         tk.Label(main_frame, text=message, font=('Arial', 16), bg=bg_color, justify='center', wraplength=400).pack(pady=(0, 15))
         
         entry = tk.Entry(main_frame, font=('Arial', 18), justify='center', width=15)
@@ -245,7 +239,6 @@ class DashboardApp:
             except ValueError:
                 self.show_message("Error", "Please enter a valid number.")
                 entry.focus_set()
-                
         def on_cancel():
             dlg.destroy()
             
@@ -266,7 +259,8 @@ class DashboardApp:
 
     def get_selected_date(self):
         date_str = self.current_date_var.get()
-        return datetime.strptime(date_str, '%Y-%m-%d').date()
+        # แปลงข้อความกลับเป็นวันที่ โดยใช้ Format %d/%m/%Y
+        return datetime.strptime(date_str, '%d/%m/%Y').date()
 
     def open_calendar(self):
         top = tk.Toplevel(self.root)
@@ -276,8 +270,9 @@ class DashboardApp:
         bg_color = top.cget('bg')
         top.configure(bg=bg_color)
         
+        # ตั้งค่า date_pattern ให้คืนค่าเป็น dd/mm/yyyy
         cal = Calendar(top, font="Arial 16", selectmode='day', 
-                       date_pattern='yyyy-mm-dd', firstweekday='sunday',
+                       date_pattern='dd/mm/yyyy', firstweekday='sunday',
                        showweeknumbers=False)
         cal.pack(padx=20, pady=(20, 10))
         
@@ -396,7 +391,6 @@ class DashboardApp:
 
     def clear_graph(self):
         current_tab = self.notebook.index(self.notebook.select())
-        
         confirm = self.ask_clear_confirm(current_tab)
         if not confirm:
             return
@@ -407,6 +401,46 @@ class DashboardApp:
         self.limit_input.delete(0, tk.END)
         self.y_input.delete(0, tk.END)
         self.update_graph(current_tab)
+
+    def export_csv(self):
+        current_tab = self.notebook.index(self.notebook.select())
+        tab_name = f"JT.{current_tab + 1}"
+        
+        x_data = self.tab_data[current_tab]['x']
+        y_data = self.tab_data[current_tab]['y']
+        limit_val = self.tab_data[current_tab]['limit']
+        
+        if not x_data:
+            self.show_message("Export Failed", f"No data available on {tab_name} to export.")
+            return
+            
+        y_unit = "Voltage (V)" if current_tab < 4 else "Temperature (°C)"
+        limit_str = str(limit_val) if limit_val is not None else "N/A"
+        
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            title=f"Save CSV for {tab_name}",
+            initialfile=f"Export_{tab_name}_{date.today().strftime('%Y%m%d')}.csv"
+        )
+        
+        if not file_path:
+            return 
+            
+        try:
+            with open(file_path, mode='w', newline='', encoding='utf-8') as file:
+                writer = csv.writer(file)
+                writer.writerow(["Date", y_unit, "Limit Value"])
+                
+                for i in range(len(x_data)):
+                    # กำหนดให้โชว์ limit_str เฉพาะบรรทัดแรก (i==0) เท่านั้น บรรทัดอื่นเป็นค่าว่าง ("")
+                    limit_to_write = limit_str if i == 0 else ""
+                    # บันทึกวันที่ในรูปแบบ วัน/เดือน/ปี
+                    writer.writerow([x_data[i].strftime('%d/%m/%Y'), y_data[i], limit_to_write])
+                    
+            self.show_message("Success", f"Data exported successfully to:\n{file_path.split('/')[-1]}")
+        except Exception as e:
+            self.show_message("Error", f"Failed to export CSV:\n{e}")
 
     def update_graph(self, tab_index):
         ax = self.axes_list[tab_index]
@@ -435,25 +469,18 @@ class DashboardApp:
                             textcoords="offset points", xytext=(0, 10), ha='center', 
                             fontsize=14, fontweight='bold', color='black')
         
-        # วาดเส้น Limit
         if limit_val is not None:
             ax.axhline(y=limit_val, color='red', linestyle='--', linewidth=2)
             limit_label = f"Limit line = {limit_val}"
         else:
             limit_label = "Limit line"
             
-        # --- จัดวาง Title และ Legend โฉมใหม่ ---
-        
-        # 1. จัดตำแหน่ง Title "Record on JT.x" ไปอยู่ชิดซ้าย
         ax.set_title(f"Record on JT.{tab_index+1}", fontsize=20, loc='left', pad=15)
         
-        # 2. สร้าง Custom Handles ให้ Legend แสดงเสมอ ไม่ว่าจะมีข้อมูลหรือไม่
         custom_lines = [
             Line2D([0], [0], color='blue', marker='o', markersize=8, linestyle='-', linewidth=2, label="Measurement data"),
             Line2D([0], [0], color='red', linestyle='--', linewidth=2, label=limit_label)
         ]
-        
-        # 3. จัดตำแหน่ง Legend ไปอยู่ชิดขวาสุด (ระดับความสูงเดียวกับ Title ด้านบนแกนกราฟ)
         ax.legend(handles=custom_lines, fontsize=14, loc='lower right', bbox_to_anchor=(1.0, 1.02), framealpha=1.0)
             
         ax.grid(True, linestyle='--', alpha=0.7)
